@@ -17,8 +17,14 @@ states, and export results to XML and CSV reports.
 - Displays a summary of open, closed, filtered, and other port states
 - Exports timestamped XML and CSV reports
 - Handles common Nmap execution, timeout, XML parsing, and file errors
-- Includes automated unit tests for target validation, XML parsing,
-  port validation, and scan summaries
+- Includes 20 automated unit tests
+
+## Demo
+
+The screenshot below shows the scanner running in Kali Linux, including
+port results and the scan summary.
+
+![Nmap scan results and summary](screenshots/scan-demo.png)
 
 ## Requirements
 
@@ -56,16 +62,15 @@ python3 scanner.py
 
 Enter an IP address or hostname when prompted.
 
-By default, the scanner checks TCP ports:
+By default, the scanner checks these TCP ports:
 
-- 22 — SSH
-- 80 — HTTP
-- 443 — HTTPS
-- 3306 — MySQL
-- 8080 — Common alternative HTTP port
+- 22 — commonly used for SSH
+- 80 — commonly used for HTTP
+- 443 — commonly used for HTTPS
+- 3306 — commonly used for MySQL
+- 8080 — commonly used as an alternative HTTP port
 
-Service names are typical uses of these ports; the actual service
-running on a port may differ.
+The actual service running on a port may differ from its typical use.
 
 ### Scan selected ports
 
@@ -112,11 +117,16 @@ Each successful scan creates timestamped files similar to:
 - `scan_report_YYYYMMDD_HHMMSS.xml`
 - `scan_report_YYYYMMDD_HHMMSS.csv`
 
-The reports include the scan timestamp, target, protocol, port,
-state, service name, product, and version where available.
-
 The XML report contains Nmap's XML output. The CSV report contains
-structured port and service information for further analysis.
+structured port and service information, including:
+
+- Scan timestamp
+- Target
+- Protocol
+- Port number
+- Port state
+- Service name
+- Product and version, where available
 
 Generated reports are excluded from Git using `.gitignore`.
 
@@ -145,7 +155,7 @@ The test suite covers:
 - DNS resolution does not guarantee that a host is reachable.
 - A scan may return no port records without indicating a programming
   error.
-- The scan has a 60-second process timeout.
+- The Nmap process has a 60-second timeout.
 - The tool does not perform vulnerability exploitation or prove that
   a service is vulnerable.
 
@@ -160,8 +170,8 @@ The test suite covers:
 
 ## Disclaimer
 
-This project is intended for educational use and authorized
-network reconnaissance only.
+This project is intended for educational use and authorized network
+reconnaissance only.
 
 Only scan systems you own or have explicit permission to test.
 Follow applicable laws and organizational policies.
