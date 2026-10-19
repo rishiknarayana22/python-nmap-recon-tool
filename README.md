@@ -1,71 +1,96 @@
-# Python + Nmap Network Reconnaissance Tool
 
-A beginner-friendly cybersecurity project that automates Nmap scans using Python and generates structured XML and CSV reports.
+# Python Nmap Network Reconnaissance Tool
+
+A beginner-friendly cybersecurity project that uses Python
+to run Nmap service detection scans and export results to XML
+and CSV reports.
 
 ## Features
 
-- Runs Nmap through Python's subprocess module
-- Scans selected TCP ports
-- Detects port states and service information
-- Parses Nmap XML output using Python's ElementTree
-- Generates XML and CSV reports
-- Records scan timestamps
-
-## Technologies Used
-
-- Python 3
-- Nmap
-- Kali Linux
-- XML
-- CSV
-- Git
+- Accepts IP addresses and resolvable hostnames
+- Validates target input before scanning
+- Uses Nmap service detection (`-sV`)
+- Scans TCP ports 22, 80, 443, 3306, and 8080
+- Parses Nmap XML output with Python
+- Exports timestamped XML and CSV reports
+- Handles common scanning and file errors
+- Includes automated tests for target validation
 
 ## Requirements
 
 - Python 3
-- Nmap installed and available in PATH
-- Linux terminal or another compatible environment
+- Nmap
+- Git (for cloning the repository)
 
-## Project Structure
+## Installation
 
-```text
-network-recon-tool/
-├── scanner.py
-├── README.md
-├── scan_report.xml
-└── scan_report.csv
+Install Nmap on Kali Linux if it is not already installed:
+
+```bash
+sudo apt update
+sudo apt install nmap
 ```
 
-## How to Run
+Clone the repository:
 
-1. Install Python 3 and Nmap.
-2. Open a terminal in the project directory.
-3. Run:
+```bash
+git clone https://github.com/rishiknarayana22/python-nmap-recon-tool.git
+cd python-nmap-recon-tool
+```
 
-   ```bash
-   python3 scanner.py
-   ```
+## Usage
 
-4. Enter an IP address or hostname for a system you own or are authorized to test.
-5. Review the generated XML and CSV reports.
+Run the scanner:
 
-## How It Works
+```bash
+python3 scanner.py
+```
 
-1. Python starts Nmap using subprocess.
-2. Nmap scans the configured TCP ports.
-3. Nmap returns XML output.
-4. Python parses the XML and extracts port and service information.
-5. The program saves the results in XML and CSV formats.
+Enter an IP address or hostname when prompted.
 
-## Learning Outcomes
+The scanner checks TCP ports 22, 80, 443, 3306, and 8080
+and attempts to identify services and versions.
 
-- Basic network reconnaissance
-- TCP port scanning concepts
-- Python subprocess automation
-- XML parsing
-- CSV report generation
-- Linux command-line usage
+## Reports
+
+Each successful scan creates timestamped files similar to:
+
+- `scan_report_YYYYMMDD_HHMMSS.xml`
+- `scan_report_YYYYMMDD_HHMMSS.csv`
+
+The reports contain the scan timestamp, target, protocol,
+port, state, service name, product, and version where available.
+
+Generated reports are excluded from Git using `.gitignore`.
+
+## Running Tests
+
+Run the automated target-validation tests:
+
+```bash
+python3 -m unittest -v test_scanner.py
+```
+
+## Limitations
+
+- Only the five configured TCP ports are scanned.
+- Service and version detection may be incomplete.
+- DNS resolution does not guarantee that a host is reachable.
+- A scan may return no port records without indicating a
+  programming error.
+- This tool is intended for learning and authorized testing.
 
 ## Disclaimer
 
-This project is intended for educational purposes and authorized security testing only. Scan only systems you own or have explicit permission to test.
+Only scan systems you own or have explicit permission to test.
+The user is responsible for complying with applicable laws and
+organizational policies.
+
+## Technologies
+
+- Python
+- Nmap
+- XML parsing
+- CSV reporting
+- Git and GitHub
+- Python unittest
