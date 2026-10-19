@@ -6,6 +6,7 @@ import csv
 import ipaddress
 import socket
 import tempfile
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -20,20 +21,17 @@ def is_valid_target(host):
     if not host:
         return False
 
-    # Accept valid IPv4 and IPv6 addresses.
     try:
         ipaddress.ip_address(host)
         return True
     except ValueError:
         pass
 
-    # Remove an optional trailing dot from a hostname.
     hostname = host[:-1] if host.endswith(".") else host
 
     if not hostname or len(hostname) > 253:
         return False
 
-    # Validate hostname labels.
     labels = hostname.split(".")
 
     for label in labels:
@@ -49,7 +47,6 @@ def is_valid_target(host):
         ):
             return False
 
-    # Accept only if the hostname resolves.
     try:
         socket.getaddrinfo(hostname, None)
         return True
@@ -124,6 +121,29 @@ def parse_nmap_xml(xml_text, host, timestamp):
     return rows
 
 
+def print_scan_summary(host, ports, rows):
+    """Display counts of port states from the scan results."""
+    counts = Counter(
+        row["state"].lower()
+        for row in rows
+    )
+
+    open_count = counts["open"]
+    closed_count = counts["closed"]
+    filtered_count = counts["filtered"]
+    other_count = len(rows) - open_count - closed_count - filtered_count
+
+    print("\nSCAN SUMMARY")
+    print("-" * 65)
+    print(f"Target: {host}")
+    print(f"Ports requested: {len(ports)}")
+    print(f"Port results returned: {len(rows)}")
+    print(f"Open ports: {open_count}")
+    print(f"Closed ports: {closed_count}")
+    print(f"Filtered ports: {filtered_count}")
+    print(f"Other states: {other_count}")
+
+
 def scan_host(host, ports):
     """Run Nmap and save XML and CSV reports."""
     now = datetime.now().astimezone()
@@ -145,7 +165,6 @@ def scan_host(host, ports):
         host
     ]
 
-    # Run Nmap and handle process execution errors.
     try:
         result = subprocess.run(
             command,
@@ -170,7 +189,6 @@ def scan_host(host, ports):
         print(result.stderr.strip() or "No error details provided.")
         return
 
-    # Parse Nmap XML independently so it can be unit-tested.
     try:
         rows = parse_nmap_xml(result.stdout, host, timestamp)
     except ET.ParseError as error:
@@ -188,7 +206,6 @@ def scan_host(host, ports):
         "version"
     ]
 
-    # Prepare both reports in temporary files first.
     temp_xml = None
     temp_csv = None
 
@@ -218,7 +235,6 @@ def scan_host(host, ports):
             writer.writeheader()
             writer.writerows(rows)
 
-        # Publish reports after both temporary files are ready.
         temp_xml.replace(xml_file)
         temp_xml = None
 
@@ -230,7 +246,6 @@ def scan_host(host, ports):
         return
 
     finally:
-        # Clean up temporary files that were not published.
         for temp_file in (temp_xml, temp_csv):
             if temp_file is not None:
                 try:
@@ -238,7 +253,6 @@ def scan_host(host, ports):
                 except OSError:
                     pass
 
-    # Display results after reports are saved.
     print("PORT SCAN RESULTS")
     print("-" * 65)
 
@@ -254,8 +268,9 @@ def scan_host(host, ports):
             f"Version: {row['version']}"
         )
 
+    print_scan_summary(host, ports, rows)
+
     print("\nScan complete.")
-    print(f"Ports recorded: {len(rows)}")
     print(f"XML report: {xml_file}")
     print(f"CSV report: {csv_file}")
 
