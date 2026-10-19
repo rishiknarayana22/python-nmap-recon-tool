@@ -1,3 +1,4 @@
+
 # Generated scan reports
 scan_report*.xml
 scan_report*.csv
@@ -5,3 +6,7 @@ scan_report*.csv
 # Python cache files
 __pycache__/
 *.py[cod]
+
+# Local scanner backup
+scanner.py.backup
+
