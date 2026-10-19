@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 import csv
 import ipaddress
 import socket
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -28,7 +29,7 @@ def is_valid_target(host):
     if not hostname or len(hostname) > 253:
         return False
 
-    # Validate the hostname format.
+    # Validate hostname labels.
     labels = hostname.split(".")
 
     for label in labels:
@@ -44,7 +45,7 @@ def is_valid_target(host):
         ):
             return False
 
-    # Check whether the hostname resolves to an IP address.
+    # Accept only if the hostname resolves.
     try:
         socket.getaddrinfo(hostname, None)
         return True
@@ -72,6 +73,7 @@ def scan_host(host):
         host
     ]
 
+    # Run Nmap and handle errors specific to process execution.
     try:
         result = subprocess.run(
             command,
@@ -80,76 +82,103 @@ def scan_host(host):
             timeout=60,
             check=False
         )
+    except FileNotFoundError:
+        print("Nmap executable was not found.")
+        print("Install Nmap or check that it is in PATH.")
+        return
+    except subprocess.TimeoutExpired:
+        print("Scan timed out after 60 seconds.")
+        return
+    except OSError as error:
+        print(f"Could not start Nmap: {error}")
+        return
 
-        if result.returncode != 0:
-            print("Nmap scan failed:")
-            print(
-                result.stderr.strip()
-                or "No error details provided."
-            )
-            return
+    if result.returncode != 0:
+        print("Nmap scan failed:")
+        print(result.stderr.strip() or "No error details provided.")
+        return
 
-        # Parse Nmap's XML output.
+    # Parse the XML before attempting to create reports.
+    try:
         root = ET.fromstring(result.stdout)
+    except ET.ParseError as error:
+        print(f"Could not parse Nmap XML output: {error}")
+        return
 
-        # Save the original XML report.
-        xml_file.write_text(result.stdout, encoding="utf-8")
+    # Extract port and service information.
+    rows = []
 
-        rows = []
+    for port in root.findall(".//port"):
+        state_element = port.find("state")
+        service_element = port.find("service")
 
-        # Extract information about the scanned ports.
-        for port in root.findall(".//port"):
-            state_element = port.find("state")
-            service_element = port.find("service")
+        state = (
+            state_element.get("state", "unknown")
+            if state_element is not None
+            else "unknown"
+        )
 
-            state = (
-                state_element.get("state", "unknown")
-                if state_element is not None
-                else "unknown"
-            )
+        service_name = (
+            service_element.get("name", "unknown")
+            if service_element is not None
+            else "unknown"
+        )
 
-            service_name = (
-                service_element.get("name", "unknown")
-                if service_element is not None
-                else "unknown"
-            )
+        product = ""
+        version = ""
 
-            product = ""
-            version = ""
+        if service_element is not None:
+            product = service_element.get("product", "")
+            version = service_element.get("version", "")
 
-            if service_element is not None:
-                product = service_element.get("product", "")
-                version = service_element.get("version", "")
+        rows.append({
+            "timestamp": timestamp,
+            "target": host,
+            "protocol": port.get("protocol", ""),
+            "port": port.get("portid", ""),
+            "state": state,
+            "service": service_name,
+            "product": product,
+            "version": version
+        })
 
-            rows.append({
-                "timestamp": timestamp,
-                "target": host,
-                "protocol": port.get("protocol", ""),
-                "port": port.get("portid", ""),
-                "state": state,
-                "service": service_name,
-                "product": product,
-                "version": version
-            })
+    fieldnames = [
+        "timestamp",
+        "target",
+        "protocol",
+        "port",
+        "state",
+        "service",
+        "product",
+        "version"
+    ]
 
-        # Define the CSV columns.
-        fieldnames = [
-            "timestamp",
-            "target",
-            "protocol",
-            "port",
-            "state",
-            "service",
-            "product",
-            "version"
-        ]
+    # Prepare both reports in temporary files first.
+    temp_xml = None
+    temp_csv = None
 
-        # Save the CSV report.
-        with csv_file.open(
-            "w",
-            newline="",
-            encoding="utf-8"
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=".",
+            prefix=".scan_xml_",
+            suffix=".tmp",
+            delete=False
         ) as report:
+            temp_xml = Path(report.name)
+            report.write(result.stdout)
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            newline="",
+            encoding="utf-8",
+            dir=".",
+            prefix=".scan_csv_",
+            suffix=".tmp",
+            delete=False
+        ) as report:
+            temp_csv = Path(report.name)
             writer = csv.DictWriter(
                 report,
                 fieldnames=fieldnames
@@ -157,38 +186,47 @@ def scan_host(host):
             writer.writeheader()
             writer.writerows(rows)
 
-        # Display the results.
-        print("PORT SCAN RESULTS")
-        print("-" * 65)
+        # Publish reports only after both temporary files are ready.
+        # Each replacement is atomic individually, not as a pair.
+        temp_xml.replace(xml_file)
+        temp_xml = None
 
-        if not rows:
-            print("No port information was returned.")
-
-        for row in rows:
-            print(
-                f"{row['protocol']}/{row['port']}: "
-                f"{row['state']} | "
-                f"Service: {row['service']} | "
-                f"Product: {row['product']} | "
-                f"Version: {row['version']}"
-            )
-
-        print("\nScan complete.")
-        print(f"Ports recorded: {len(rows)}")
-        print(f"XML report: {xml_file}")
-        print(f"CSV report: {csv_file}")
-
-    except FileNotFoundError:
-        print("Nmap is not installed or not in PATH.")
-
-    except subprocess.TimeoutExpired:
-        print("Scan timed out after 60 seconds.")
-
-    except ET.ParseError:
-        print("Could not parse Nmap XML output.")
+        temp_csv.replace(csv_file)
+        temp_csv = None
 
     except (OSError, csv.Error) as error:
-        print(f"File or system error: {error}")
+        print(f"Could not save scan reports: {error}")
+        return
+
+    finally:
+        # Remove temporary files that were not published.
+        for temp_file in (temp_xml, temp_csv):
+            if temp_file is not None:
+                try:
+                    temp_file.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    # Display results only after reports have been saved.
+    print("PORT SCAN RESULTS")
+    print("-" * 65)
+
+    if not rows:
+        print("No port information was returned.")
+
+    for row in rows:
+        print(
+            f"{row['protocol']}/{row['port']}: "
+            f"{row['state']} | "
+            f"Service: {row['service']} | "
+            f"Product: {row['product']} | "
+            f"Version: {row['version']}"
+        )
+
+    print("\nScan complete.")
+    print(f"Ports recorded: {len(rows)}")
+    print(f"XML report: {xml_file}")
+    print(f"CSV report: {csv_file}")
 
 
 def main():
@@ -197,9 +235,7 @@ def main():
     ).strip()
 
     if not is_valid_target(host):
-        print(
-            "Invalid target or hostname could not be resolved."
-        )
+        print("Invalid target or hostname could not be resolved.")
         return
 
     scan_host(host)
