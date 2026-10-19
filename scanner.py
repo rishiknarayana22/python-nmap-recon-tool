@@ -1,4 +1,5 @@
 
+import argparse
 import subprocess
 import xml.etree.ElementTree as ET
 import csv
@@ -7,6 +8,9 @@ import socket
 import tempfile
 from datetime import datetime
 from pathlib import Path
+
+
+DEFAULT_PORTS = [22, 80, 443, 3306, 8080]
 
 
 def is_valid_target(host):
@@ -53,6 +57,31 @@ def is_valid_target(host):
         return False
 
 
+def parse_ports(port_text):
+    """Parse and validate comma-separated TCP port numbers."""
+    try:
+        parts = port_text.split(",")
+
+        if not parts or any(not part.strip() for part in parts):
+            raise ValueError
+
+        ports = [int(part.strip()) for part in parts]
+
+        if any(port < 1 or port > 65535 for port in ports):
+            raise ValueError
+
+        if len(ports) != len(set(ports)):
+            raise ValueError
+
+        return ports
+
+    except (ValueError, AttributeError):
+        raise ValueError(
+            "Ports must be unique integers between 1 and 65535, "
+            "separated by commas, e.g. 22,80,443."
+        )
+
+
 def parse_nmap_xml(xml_text, host, timestamp):
     """Extract port and service information from Nmap XML."""
     root = ET.fromstring(xml_text)
@@ -95,7 +124,7 @@ def parse_nmap_xml(xml_text, host, timestamp):
     return rows
 
 
-def scan_host(host):
+def scan_host(host, ports):
     """Run Nmap and save XML and CSV reports."""
     now = datetime.now().astimezone()
     timestamp = now.isoformat(timespec="seconds")
@@ -105,12 +134,13 @@ def scan_host(host):
     csv_file = Path(f"scan_report_{file_timestamp}.csv")
 
     print(f"\nScanning {host} with Nmap...")
+    print(f"Ports: {','.join(str(port) for port in ports)}")
     print(f"Started at: {timestamp}\n")
 
     command = [
         "nmap",
         "-sV",
-        "-p", "22,80,443,3306,8080",
+        "-p", ",".join(str(port) for port in ports),
         "-oX", "-",
         host
     ]
@@ -188,7 +218,7 @@ def scan_host(host):
             writer.writeheader()
             writer.writerows(rows)
 
-        # Publish the reports after both temporary files are ready.
+        # Publish reports after both temporary files are ready.
         temp_xml.replace(xml_file)
         temp_xml = None
 
@@ -231,6 +261,23 @@ def scan_host(host):
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Scan authorized targets using Nmap."
+    )
+
+    parser.add_argument(
+        "--ports",
+        default=",".join(str(port) for port in DEFAULT_PORTS),
+        help="Comma-separated TCP ports (default: 22,80,443,3306,8080)"
+    )
+
+    args = parser.parse_args()
+
+    try:
+        ports = parse_ports(args.ports)
+    except ValueError as error:
+        parser.error(str(error))
+
     host = input(
         "Enter an IP address or authorized hostname: "
     ).strip()
@@ -239,7 +286,7 @@ def main():
         print("Invalid target or hostname could not be resolved.")
         return
 
-    scan_host(host)
+    scan_host(host, ports)
 
 
 if __name__ == "__main__":
