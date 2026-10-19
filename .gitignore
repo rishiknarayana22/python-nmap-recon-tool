@@ -1,3 +1,7 @@
-scan_report.xml
-scan_report.csv
+# Generated scan reports
+scan_report*.xml
+scan_report*.csv
+
+# Python cache files
 __pycache__/
+*.py[cod]
