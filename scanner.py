@@ -3,47 +3,57 @@ import subprocess
 import xml.etree.ElementTree as ET
 import csv
 import ipaddress
-import re
+import socket
 from datetime import datetime
 from pathlib import Path
 
 
 def is_valid_target(host):
-    """Validate an IPv4 address, IPv6 address, or hostname."""
+    """Accept IP addresses and hostnames that resolve successfully."""
+    host = host.strip()
+
+    if not host:
+        return False
+
+    # Accept valid IPv4 and IPv6 addresses.
     try:
         ipaddress.ip_address(host)
         return True
     except ValueError:
         pass
 
-    if not host or len(host) > 253:
+    # Remove an optional trailing dot from a hostname.
+    hostname = host[:-1] if host.endswith(".") else host
+
+    if not hostname or len(hostname) > 253:
         return False
 
-    # Remove a trailing dot used in fully qualified hostnames.
-    if host.endswith("."):
-        host = host[:-1]
+    # Validate the hostname format.
+    labels = hostname.split(".")
 
-    if not host:
+    for label in labels:
+        if (
+            not label
+            or len(label) > 63
+            or not label[0].isalnum()
+            or not label[-1].isalnum()
+            or not all(
+                character.isalnum() or character == "-"
+                for character in label
+            )
+        ):
+            return False
+
+    # Check whether the hostname resolves to an IP address.
+    try:
+        socket.getaddrinfo(hostname, None)
+        return True
+    except (socket.gaierror, OSError):
         return False
-
-    labels = host.split(".")
-
-    # Validate each hostname label.
-    return all(
-        label
-        and len(label) <= 63
-        and label[0].isalnum()
-        and label[-1].isalnum()
-        and all(
-            character.isalnum() or character == "-"
-            for character in label
-        )
-        for label in labels
-    )
 
 
 def scan_host(host):
-    # Create a timestamp for this scan and its report filenames.
+    """Run Nmap and save XML and CSV reports."""
     now = datetime.now().astimezone()
     timestamp = now.isoformat(timespec="seconds")
     file_timestamp = now.strftime("%Y%m%d_%H%M%S")
@@ -73,7 +83,10 @@ def scan_host(host):
 
         if result.returncode != 0:
             print("Nmap scan failed:")
-            print(result.stderr.strip() or "No error details provided.")
+            print(
+                result.stderr.strip()
+                or "No error details provided."
+            )
             return
 
         # Parse Nmap's XML output.
@@ -82,9 +95,9 @@ def scan_host(host):
         # Save the original XML report.
         xml_file.write_text(result.stdout, encoding="utf-8")
 
-        # Extract port and service information.
         rows = []
 
+        # Extract information about the scanned ports.
         for port in root.findall(".//port"):
             state_element = port.find("state")
             service_element = port.find("service")
@@ -144,7 +157,7 @@ def scan_host(host):
             writer.writeheader()
             writer.writerows(rows)
 
-        # Display the scan results.
+        # Display the results.
         print("PORT SCAN RESULTS")
         print("-" * 65)
 
@@ -180,11 +193,13 @@ def scan_host(host):
 
 def main():
     host = input(
-        "Enter your own lab IP or authorized target: "
+        "Enter an IP address or authorized hostname: "
     ).strip()
 
     if not is_valid_target(host):
-        print("Invalid IP address or hostname.")
+        print(
+            "Invalid target or hostname could not be resolved."
+        )
         return
 
     scan_host(host)
@@ -192,4 +207,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
