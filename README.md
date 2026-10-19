@@ -1,7 +1,7 @@
 
 # Python Nmap Network Reconnaissance Tool
 
-A beginner-friendly cybersecurity project built with Python and Nmap
+A Cybersecurity project built with Python and Nmap
 to scan authorized targets, identify network services, summarize port
 states, and export results to XML and CSV reports.
 
