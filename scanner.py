@@ -53,59 +53,9 @@ def is_valid_target(host):
         return False
 
 
-def scan_host(host):
-    """Run Nmap and save XML and CSV reports."""
-    now = datetime.now().astimezone()
-    timestamp = now.isoformat(timespec="seconds")
-    file_timestamp = now.strftime("%Y%m%d_%H%M%S")
-
-    xml_file = Path(f"scan_report_{file_timestamp}.xml")
-    csv_file = Path(f"scan_report_{file_timestamp}.csv")
-
-    print(f"\nScanning {host} with Nmap...")
-    print(f"Started at: {timestamp}\n")
-
-    command = [
-        "nmap",
-        "-sV",
-        "-p", "22,80,443,3306,8080",
-        "-oX", "-",
-        host
-    ]
-
-    # Run Nmap and handle errors specific to process execution.
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False
-        )
-    except FileNotFoundError:
-        print("Nmap executable was not found.")
-        print("Install Nmap or check that it is in PATH.")
-        return
-    except subprocess.TimeoutExpired:
-        print("Scan timed out after 60 seconds.")
-        return
-    except OSError as error:
-        print(f"Could not start Nmap: {error}")
-        return
-
-    if result.returncode != 0:
-        print("Nmap scan failed:")
-        print(result.stderr.strip() or "No error details provided.")
-        return
-
-    # Parse the XML before attempting to create reports.
-    try:
-        root = ET.fromstring(result.stdout)
-    except ET.ParseError as error:
-        print(f"Could not parse Nmap XML output: {error}")
-        return
-
-    # Extract port and service information.
+def parse_nmap_xml(xml_text, host, timestamp):
+    """Extract port and service information from Nmap XML."""
+    root = ET.fromstring(xml_text)
     rows = []
 
     for port in root.findall(".//port"):
@@ -141,6 +91,61 @@ def scan_host(host):
             "product": product,
             "version": version
         })
+
+    return rows
+
+
+def scan_host(host):
+    """Run Nmap and save XML and CSV reports."""
+    now = datetime.now().astimezone()
+    timestamp = now.isoformat(timespec="seconds")
+    file_timestamp = now.strftime("%Y%m%d_%H%M%S")
+
+    xml_file = Path(f"scan_report_{file_timestamp}.xml")
+    csv_file = Path(f"scan_report_{file_timestamp}.csv")
+
+    print(f"\nScanning {host} with Nmap...")
+    print(f"Started at: {timestamp}\n")
+
+    command = [
+        "nmap",
+        "-sV",
+        "-p", "22,80,443,3306,8080",
+        "-oX", "-",
+        host
+    ]
+
+    # Run Nmap and handle process execution errors.
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False
+        )
+    except FileNotFoundError:
+        print("Nmap executable was not found.")
+        print("Install Nmap or check that it is in PATH.")
+        return
+    except subprocess.TimeoutExpired:
+        print("Scan timed out after 60 seconds.")
+        return
+    except OSError as error:
+        print(f"Could not start Nmap: {error}")
+        return
+
+    if result.returncode != 0:
+        print("Nmap scan failed:")
+        print(result.stderr.strip() or "No error details provided.")
+        return
+
+    # Parse Nmap XML independently so it can be unit-tested.
+    try:
+        rows = parse_nmap_xml(result.stdout, host, timestamp)
+    except ET.ParseError as error:
+        print(f"Could not parse Nmap XML output: {error}")
+        return
 
     fieldnames = [
         "timestamp",
@@ -179,15 +184,11 @@ def scan_host(host):
             delete=False
         ) as report:
             temp_csv = Path(report.name)
-            writer = csv.DictWriter(
-                report,
-                fieldnames=fieldnames
-            )
+            writer = csv.DictWriter(report, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(rows)
 
-        # Publish reports only after both temporary files are ready.
-        # Each replacement is atomic individually, not as a pair.
+        # Publish the reports after both temporary files are ready.
         temp_xml.replace(xml_file)
         temp_xml = None
 
@@ -199,7 +200,7 @@ def scan_host(host):
         return
 
     finally:
-        # Remove temporary files that were not published.
+        # Clean up temporary files that were not published.
         for temp_file in (temp_xml, temp_csv):
             if temp_file is not None:
                 try:
@@ -207,7 +208,7 @@ def scan_host(host):
                 except OSError:
                     pass
 
-    # Display results only after reports have been saved.
+    # Display results after reports are saved.
     print("PORT SCAN RESULTS")
     print("-" * 65)
 
