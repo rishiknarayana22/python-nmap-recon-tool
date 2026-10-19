@@ -2,8 +2,14 @@
 import unittest
 from unittest.mock import patch
 import socket
+import xml.etree.ElementTree as ET
 
-from scanner import is_valid_target, parse_nmap_xml, parse_ports
+from scanner import (
+    is_valid_target,
+    parse_nmap_xml,
+    parse_ports,
+    print_scan_summary,
+)
 
 
 class TestTargetValidation(unittest.TestCase):
@@ -111,7 +117,7 @@ class TestNmapXMLParsing(unittest.TestCase):
     def test_malformed_xml(self):
         xml_text = "<nmaprun><host>"
 
-        with self.assertRaises(Exception):
+        with self.assertRaises(ET.ParseError):
             parse_nmap_xml(
                 xml_text,
                 "127.0.0.1",
@@ -155,6 +161,50 @@ class TestPortParsing(unittest.TestCase):
     def test_non_numeric_port_is_rejected(self):
         with self.assertRaises(ValueError):
             parse_ports("abc")
+
+
+class TestScanSummary(unittest.TestCase):
+
+    @patch("builtins.print")
+    def test_summary_counts_port_states(self, mock_print):
+        ports = [22, 80, 443, 3306, 8080]
+
+        rows = [
+            {"state": "open"},
+            {"state": "closed"},
+            {"state": "filtered"},
+            {"state": "open"},
+            {"state": "open"},
+        ]
+
+        print_scan_summary("127.0.0.1", ports, rows)
+
+        output = "\n".join(
+            str(call.args[0])
+            for call in mock_print.call_args_list
+        )
+
+        self.assertIn("Target: 127.0.0.1", output)
+        self.assertIn("Ports requested: 5", output)
+        self.assertIn("Port results returned: 5", output)
+        self.assertIn("Open ports: 3", output)
+        self.assertIn("Closed ports: 1", output)
+        self.assertIn("Filtered ports: 1", output)
+        self.assertIn("Other states: 0", output)
+
+    @patch("builtins.print")
+    def test_summary_with_no_results(self, mock_print):
+        print_scan_summary("127.0.0.1", [22, 80], [])
+
+        output = "\n".join(
+            str(call.args[0])
+            for call in mock_print.call_args_list
+        )
+
+        self.assertIn("Ports requested: 2", output)
+        self.assertIn("Port results returned: 0", output)
+        self.assertIn("Open ports: 0", output)
+        self.assertIn("Other states: 0", output)
 
 
 if __name__ == "__main__":
